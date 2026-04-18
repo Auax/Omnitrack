@@ -1,0 +1,41 @@
+# ==============================
+# Build & Derived Data
+# ==============================
+DerivedData/
+build/
+*.build/
+
+# ==============================
+# Dependencies & Package Managers
+# ==============================
+# Note: You can comment these out if you specifically 
+# want the AI to read the source code of your third-party packages.
+Pods/
+Carthage/
+.build/
+.swiftpm/
+
+# ==============================
+# Xcode User Data & Metadata
+# ==============================
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcshareddata/SwiftPM/configuration/
+
+# ==============================
+# Compiled Products, Archives, & Symbols
+# ==============================
+*.app
+*.ipa
+*.framework
+*.dSYM
+*.xcarchive
+
+# ==============================
+# Logs, OS Files, & Misc
+# ==============================
+.DS_Store
+*.log
+*.crash
+*.swp

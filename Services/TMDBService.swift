@@ -1,0 +1,398 @@
+import Foundation
+
+nonisolated struct TMDBMovieResponse: Codable, Sendable {
+    let page: Int
+    let results: [TMDBMovie]
+    let totalPages: Int
+    let totalResults: Int
+
+    enum CodingKeys: String, CodingKey {
+        case page, results
+        case totalPages = "total_pages"
+        case totalResults = "total_results"
+    }
+}
+
+nonisolated struct TMDBTVResponse: Codable, Sendable {
+    let page: Int
+    let results: [TMDBTV]
+    let totalPages: Int
+    let totalResults: Int
+
+    enum CodingKeys: String, CodingKey {
+        case page, results
+        case totalPages = "total_pages"
+        case totalResults = "total_results"
+    }
+}
+
+nonisolated struct TMDBMultiResult: Codable, Sendable {
+    let id: Int
+    let mediaType: String?
+    let title: String?
+    let name: String?
+    let originalName: String?
+    let originalLanguage: String?
+    let overview: String?
+    let posterPath: String?
+    let backdropPath: String?
+    let voteAverage: Double?
+    let releaseDate: String?
+    let firstAirDate: String?
+    let genreIds: [Int]?
+    let popularity: Double?
+    /// Present when `mediaType == "person"`. Contains the person's most notable
+    /// movie/TV credits so a query matching a person can surface their work.
+    let knownFor: [TMDBMultiResult]?
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, name, overview, popularity
+        case mediaType = "media_type"
+        case originalName = "original_name"
+        case originalLanguage = "original_language"
+        case posterPath = "poster_path"
+        case backdropPath = "backdrop_path"
+        case voteAverage = "vote_average"
+        case releaseDate = "release_date"
+        case firstAirDate = "first_air_date"
+        case genreIds = "genre_ids"
+        case knownFor = "known_for"
+    }
+}
+
+nonisolated struct TMDBMultiResponse: Codable, Sendable {
+    let page: Int
+    let results: [TMDBMultiResult]
+}
+
+nonisolated struct TMDBMovie: Codable, Sendable {
+    let id: Int
+    let title: String
+    let overview: String
+    let posterPath: String?
+    let backdropPath: String?
+    let voteAverage: Double
+    let releaseDate: String?
+    let genreIds: [Int]
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, overview
+        case posterPath = "poster_path"
+        case backdropPath = "backdrop_path"
+        case voteAverage = "vote_average"
+        case releaseDate = "release_date"
+        case genreIds = "genre_ids"
+    }
+}
+
+nonisolated struct TMDBTV: Codable, Sendable {
+    let id: Int
+    let name: String
+    let originalName: String?
+    let originalLanguage: String?
+    let overview: String
+    let posterPath: String?
+    let backdropPath: String?
+    let voteAverage: Double
+    let firstAirDate: String?
+    let genreIds: [Int]
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, overview
+        case originalName = "original_name"
+        case originalLanguage = "original_language"
+        case posterPath = "poster_path"
+        case backdropPath = "backdrop_path"
+        case voteAverage = "vote_average"
+        case firstAirDate = "first_air_date"
+        case genreIds = "genre_ids"
+    }
+}
+
+nonisolated struct TMDBTVDetail: Codable, Sendable {
+    let id: Int
+    let numberOfEpisodes: Int?
+    let numberOfSeasons: Int?
+    let seasons: [TMDBSeasonSummary]?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case numberOfEpisodes = "number_of_episodes"
+        case numberOfSeasons = "number_of_seasons"
+        case seasons
+    }
+}
+
+nonisolated struct TMDBSeasonSummary: Codable, Sendable {
+    let id: Int
+    let seasonNumber: Int
+    let name: String
+    let episodeCount: Int
+    let airDate: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case seasonNumber = "season_number"
+        case name
+        case episodeCount = "episode_count"
+        case airDate = "air_date"
+    }
+}
+
+nonisolated struct TMDBSeasonDetail: Codable, Sendable {
+    let id: Int
+    let seasonNumber: Int
+    let name: String
+    let episodes: [TMDBEpisodeDetail]
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case seasonNumber = "season_number"
+        case name, episodes
+    }
+}
+
+nonisolated struct TMDBEpisodeDetail: Codable, Sendable {
+    let id: Int
+    let episodeNumber: Int
+    let seasonNumber: Int
+    let name: String
+    let overview: String
+    let stillPath: String?
+    let airDate: String?
+    let runtime: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case episodeNumber = "episode_number"
+        case seasonNumber = "season_number"
+        case name, overview
+        case stillPath = "still_path"
+        case airDate = "air_date"
+        case runtime
+    }
+}
+
+nonisolated struct TMDBGenreList: Codable, Sendable {
+    let genres: [TMDBGenre]
+}
+
+nonisolated struct TMDBGenre: Codable, Sendable {
+    let id: Int
+    let name: String
+}
+
+private actor TMDBResponseCache {
+    private struct Entry {
+        let data: Data
+        let date: Date
+    }
+
+    private var entries: [String: Entry] = [:]
+    private let ttl: TimeInterval
+
+    init(ttl: TimeInterval = 60 * 10) {
+        self.ttl = ttl
+    }
+
+    func data(for key: String) -> Data? {
+        guard let entry = entries[key] else { return nil }
+        guard Date().timeIntervalSince(entry.date) <= ttl else {
+            entries[key] = nil
+            return nil
+        }
+        return entry.data
+    }
+
+    func set(_ data: Data, for key: String) {
+        entries[key] = Entry(data: data, date: Date())
+    }
+}
+
+nonisolated final class TMDBService: Sendable {
+    private let apiKey: String
+    private let baseURL = "https://api.themoviedb.org/3"
+    private static let responseCache = TMDBResponseCache()
+
+    init(apiKey: String = Config.TMDB_API_KEY) {
+        self.apiKey = apiKey
+    }
+
+    private func fetchData(from url: URL) async throws -> Data {
+        let key = url.absoluteString
+        if let cached = await Self.responseCache.data(for: key) {
+            return cached
+        }
+
+        let (data, _) = try await URLSession.shared.data(from: url)
+        await Self.responseCache.set(data, for: key)
+        return data
+    }
+
+    private func fetchAndDecode<T: Decodable>(_ type: T.Type, from url: URL) async throws -> T {
+        let data = try await fetchData(from: url)
+        return try JSONDecoder().decode(type, from: data)
+    }
+
+    func fetchTrendingMovies(page: Int = 1) async throws -> [TMDBMovie] {
+        let url = URL(string: "\(baseURL)/trending/movie/week?api_key=\(apiKey)&language=en-US&page=\(page)")!
+        let response = try await fetchAndDecode(TMDBMovieResponse.self, from: url)
+        return response.results
+    }
+
+    func fetchPopularMovies(page: Int = 1) async throws -> [TMDBMovie] {
+        let url = URL(string: "\(baseURL)/movie/popular?api_key=\(apiKey)&language=en-US&page=\(page)")!
+        let response = try await fetchAndDecode(TMDBMovieResponse.self, from: url)
+        return response.results
+    }
+
+    func fetchNowPlayingMovies(page: Int = 1) async throws -> [TMDBMovie] {
+        let url = URL(string: "\(baseURL)/movie/now_playing?api_key=\(apiKey)&language=en-US&page=\(page)")!
+        let response = try await fetchAndDecode(TMDBMovieResponse.self, from: url)
+        return response.results
+    }
+
+    func fetchTrendingTV(page: Int = 1) async throws -> [TMDBTV] {
+        let url = URL(string: "\(baseURL)/trending/tv/week?api_key=\(apiKey)&language=en-US&page=\(page)")!
+        let response = try await fetchAndDecode(TMDBTVResponse.self, from: url)
+        return response.results
+    }
+
+    func fetchPopularTV(page: Int = 1) async throws -> [TMDBTV] {
+        let url = URL(string: "\(baseURL)/tv/popular?api_key=\(apiKey)&language=en-US&page=\(page)")!
+        let response = try await fetchAndDecode(TMDBTVResponse.self, from: url)
+        return response.results
+    }
+
+    func fetchOnTheAirTV(page: Int = 1) async throws -> [TMDBTV] {
+        let url = URL(string: "\(baseURL)/tv/on_the_air?api_key=\(apiKey)&language=en-US&page=\(page)")!
+        let response = try await fetchAndDecode(TMDBTVResponse.self, from: url)
+        return response.results
+    }
+
+    func fetchAnime(page: Int = 1, sortBy: String = "popularity.desc", genreId: Int? = nil) async throws -> [TMDBTV] {
+        var urlString = "\(baseURL)/discover/tv?api_key=\(apiKey)&language=en-US&page=\(page)&with_keywords=210024&sort_by=\(sortBy)"
+        if let genreId {
+            urlString += "&with_genres=\(genreId)"
+        }
+        let url = URL(string: urlString)!
+        let response = try await fetchAndDecode(TMDBTVResponse.self, from: url)
+        return response.results
+    }
+
+    func fetchTVDetail(id: Int) async throws -> TMDBTVDetail {
+        let url = URL(string: "\(baseURL)/tv/\(id)?api_key=\(apiKey)&language=en-US")!
+        return try await fetchAndDecode(TMDBTVDetail.self, from: url)
+    }
+
+    func fetchSeasonDetail(tvId: Int, seasonNumber: Int) async throws -> TMDBSeasonDetail {
+        let url = URL(string: "\(baseURL)/tv/\(tvId)/season/\(seasonNumber)?api_key=\(apiKey)&language=en-US")!
+        return try await fetchAndDecode(TMDBSeasonDetail.self, from: url)
+    }
+
+    func fetchMovieGenres() async throws -> [TMDBGenre] {
+        let url = URL(string: "\(baseURL)/genre/movie/list?api_key=\(apiKey)&language=en-US")!
+        let response = try await fetchAndDecode(TMDBGenreList.self, from: url)
+        return response.genres
+    }
+
+    func fetchTVGenres() async throws -> [TMDBGenre] {
+        let url = URL(string: "\(baseURL)/genre/tv/list?api_key=\(apiKey)&language=en-US")!
+        let response = try await fetchAndDecode(TMDBGenreList.self, from: url)
+        return response.genres
+    }
+
+    func searchMovies(query: String, page: Int = 1) async throws -> [TMDBMovie] {
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        let url = URL(string: "\(baseURL)/search/movie?api_key=\(apiKey)&language=en-US&query=\(encoded)&page=\(page)")!
+        let response = try await fetchAndDecode(TMDBMovieResponse.self, from: url)
+        return response.results
+    }
+
+    func searchTV(query: String, page: Int = 1) async throws -> [TMDBTV] {
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        let url = URL(string: "\(baseURL)/search/tv?api_key=\(apiKey)&language=en-US&query=\(encoded)&page=\(page)")!
+        let response = try await fetchAndDecode(TMDBTVResponse.self, from: url)
+        return response.results
+    }
+
+    func searchMulti(query: String, page: Int = 1) async throws -> [TMDBMultiResult] {
+        let encoded = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? query
+        let url = URL(string: "\(baseURL)/search/multi?api_key=\(apiKey)&language=en-US&query=\(encoded)&page=\(page)&include_adult=false")!
+        let response = try await fetchAndDecode(TMDBMultiResponse.self, from: url)
+        return response.results
+    }
+
+    func discoverMoviesByGenre(genreId: Int, page: Int = 1) async throws -> [TMDBMovie] {
+        try await discoverMovies(sortBy: "popularity.desc", genreId: genreId, page: page)
+    }
+
+    func discoverTVByGenre(genreId: Int, page: Int = 1) async throws -> [TMDBTV] {
+        try await discoverTV(sortBy: "popularity.desc", genreId: genreId, page: page)
+    }
+
+    func discoverMovies(sortBy: String, genreId: Int?, page: Int = 1) async throws -> [TMDBMovie] {
+        var components = "\(baseURL)/discover/movie?api_key=\(apiKey)&language=en-US&page=\(page)&include_adult=false&sort_by=\(sortBy)"
+        if let genreId {
+            components += "&with_genres=\(genreId)"
+        }
+        if sortBy.hasPrefix("vote_average") {
+            // Prevent items with a tiny sample size from dominating the top.
+            components += "&vote_count.gte=300"
+        }
+        let url = URL(string: components)!
+        let response = try await fetchAndDecode(TMDBMovieResponse.self, from: url)
+        return response.results
+    }
+
+    func discoverTV(sortBy: String, genreId: Int?, page: Int = 1) async throws -> [TMDBTV] {
+        var components = "\(baseURL)/discover/tv?api_key=\(apiKey)&language=en-US&page=\(page)&include_adult=false&sort_by=\(sortBy)"
+        if let genreId {
+            components += "&with_genres=\(genreId)"
+        }
+        if sortBy.hasPrefix("vote_average") {
+            components += "&vote_count.gte=300"
+        }
+        let url = URL(string: components)!
+        let response = try await fetchAndDecode(TMDBTVResponse.self, from: url)
+        return response.results
+    }
+
+    // MARK: - IMDB Rating (via TMDB external IDs + OMDB)
+
+    func fetchMovieExternalIds(movieId: Int) async throws -> TMDBExternalIds {
+        let url = URL(string: "\(baseURL)/movie/\(movieId)/external_ids?api_key=\(apiKey)")!
+        return try await fetchAndDecode(TMDBExternalIds.self, from: url)
+    }
+
+    func fetchTVExternalIds(tvId: Int) async throws -> TMDBExternalIds {
+        let url = URL(string: "\(baseURL)/tv/\(tvId)/external_ids?api_key=\(apiKey)")!
+        return try await fetchAndDecode(TMDBExternalIds.self, from: url)
+    }
+
+    func fetchImdbRating(imdbId: String) async throws -> Double? {
+        // Uses the free OMDB API (no key required for basic info via IMDB ID)
+        let url = URL(string: "https://www.omdbapi.com/?i=\(imdbId)&apikey=\(Config.OMDB_API_KEY)")!
+        let response = try await fetchAndDecode(OMDBResponse.self, from: url)
+        if let ratingStr = response.imdbRating, let rating = Double(ratingStr) {
+            return rating
+        }
+        return nil
+    }
+}
+
+nonisolated struct TMDBExternalIds: Codable, Sendable {
+    let imdbId: String?
+
+    enum CodingKeys: String, CodingKey {
+        case imdbId = "imdb_id"
+    }
+}
+
+nonisolated struct OMDBResponse: Codable, Sendable {
+    let imdbRating: String?
+
+    enum CodingKeys: String, CodingKey {
+        case imdbRating
+    }
+}
