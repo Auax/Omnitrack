@@ -29,6 +29,8 @@ class MediaService {
     private let tmdbService = TMDBService()
     private let aniListService = AniListService()
     private let aniListGenreBaseId: Int = 1_000_000
+    /// AniList genre names omitted from the Discover genre filter (lowercased).
+    private static let excludedDiscoverGenreFilterNames: Set<String> = ["hentai"]
     private var aniListGenreIdMap: [String: Int] = [:]
     var genreMap: [Int: String] = [:]
     private var watchedIds: Set<Int> = []
@@ -265,7 +267,12 @@ class MediaService {
         let filteredGenres = genreMap.filter { key, _ in
             includeAniListGenres || key < aniListGenreBaseId
         }
-        return Array(Set(filteredGenres.values)).sorted()
+        return Array(Set(filteredGenres.values))
+            .filter { name in
+                let key = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                return !Self.excludedDiscoverGenreFilterNames.contains(key)
+            }
+            .sorted()
     }
 
     private func tmdbGenreId(from id: Int?) -> Int? {
